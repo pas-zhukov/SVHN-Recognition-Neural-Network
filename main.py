@@ -1,10 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import torchvision.datasets as dset
 from torch.utils.data.sampler import SubsetRandomSampler, Sampler
-from torchvision import transforms
-import numpy as np
 from tqdm import tqdm
 
 from data_functions import *
@@ -111,5 +108,3 @@ for epoch in tqdm(range(num_epochs)):
 test_loader = torch.utils.data.DataLoader(data_test, batch_size=64)
 test_accuracy = compute_accuracy(nn_model, test_loader)
 print("Test accuracy: %2.4f" % test_accuracy)
-
-torch.onnx.export(nn_model, data_test, 'svhn.onnx', input_names=["image"], output_names=["Numbers Probabilities"])
