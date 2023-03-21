@@ -7,7 +7,7 @@ from tqdm import tqdm
 from data_functions import *
 from metrics_functions import *
 
-#Подключим видеокарту!
+# Подключим видеокарту!
 if torch.cuda.is_available():
     dev = 'cuda:0'
 else:
@@ -28,11 +28,14 @@ class Flattener(nn.Module):
         return x.view(batch_size, -1)
 
 
-# Определяем структуру нейронной сети. У нас будет 1 скрытый слой из 1000 нейронов
+# Определяем структуру нейронной сети. У нас будет 2 скрытых слоя из 1000 нейронов
 nn_model = nn.Sequential(
     Flattener(),
     nn.Linear(3 * 32 * 32, 1000),
     nn.LeakyReLU(inplace=True),
+    nn.BatchNorm1d(1000),
+    nn.Linear(1000, 1000),
+    nn.ReLU(inplace=True),
     nn.BatchNorm1d(1000),
     nn.Linear(1000, 10)
 )
@@ -44,28 +47,25 @@ loss = nn.CrossEntropyLoss().type(torch.cuda.FloatTensor)
 optimizer = optim.Adagrad(nn_model.parameters(), lr=1e-3, weight_decay=1e-1)
 
 # Будем также использовать LR Annealing
-'''scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lambda ep: 0.5, verbose=True)'''
+scheduler = optim.lr_scheduler.MultiplicativeLR(optimizer, lambda ep: 0.9, verbose=False)
 
-# Лучше будем снижать LR на плато
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=.1, patience=5)
+# Лучше будем снижать LR на плато !UPDATE - не будем :)
+'''scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=.1, patience=5)'''
 
 # Создадим списки для сохранения величины функции потерь, точности на тренировки и валидации - на каждом этапе (эпохе)
 loss_history = []
 train_history = []
 val_history = []
 
-
-
 # Запускаем тренировку!
 num_epochs = 20
-for epoch in tqdm(range(num_epochs)):
+for epoch in range(num_epochs):
     nn_model.train()  # Enter train mode
 
     loss_accum = 0
     correct_samples = 0
     total_samples = 0
     for i_step, (x, y) in enumerate(train_loader):
-
         # Сохраняем наши тензоры в памяти видеокарты, чтобы всё посчитать побыстрее
         x = x.to(device)
         y = y.to(device)
@@ -91,18 +91,23 @@ for epoch in tqdm(range(num_epochs)):
         # Аккумулируем значение функции потерь, это пригодится далее
         loss_accum += loss_value
 
+    # Среднее значение функции потерь за эпоху
     ave_loss = loss_accum / (i_step + 1)
+    # Рассчитываем точность тренировочных данных на эпохе
     train_accuracy = float(correct_samples) / total_samples
+    # Рассчитываем точность на валидационной выборке (вообще после этого надо бы гиперпараметры поподбирать...)
     val_accuracy = compute_accuracy(nn_model, val_loader)
 
+    # Сохраняем значения ф-ии потерь и точности для последующего анализа и построения графиков
     loss_history.append(float(ave_loss))
     train_history.append(train_accuracy)
     val_history.append(val_accuracy)
 
+    # Уменьшаем лернинг рейт (annealing)
     scheduler.step(ave_loss)
 
+    print(f'Epoch %i of %i' % (epoch, num_epochs))
     print("Average loss: %f, Train accuracy: %f, Val accuracy: %f" % (ave_loss, train_accuracy, val_accuracy))
-
 
 # Проверяем модель на test set
 test_loader = torch.utils.data.DataLoader(data_test, batch_size=64)
